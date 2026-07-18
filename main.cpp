@@ -3,6 +3,7 @@
 
 //Qt
 #include <QApplication>
+#include <QIcon>
 
 //Classes
 #include "src/Platform.h"
@@ -24,6 +25,7 @@ int main(int argc, char *argv[]) {
     // return 0;
 
     QApplication app(argc, argv);
+    app.setWindowIcon(QIcon(QStringLiteral(":/assets/RouteHunter.png")));
 
     MainWindow window;
     window.show();
