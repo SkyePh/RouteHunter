@@ -5,9 +5,11 @@
 
 class FFUFCommand {
 public:
+    std::string buildCommandFlags();
+
     std::string url;
     unsigned short threads;
-    std::string wordlistPath = "../wordlists/";
+    std::string wordlistPath;
     bool redirects;
     bool autoCal;
     bool recursion;

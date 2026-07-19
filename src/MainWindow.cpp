@@ -19,6 +19,9 @@
 #include <QVBoxLayout>
 #include <QWidget>
 
+#include "FFUFCommand.h"
+#include "FFUFRunner.h"
+
 QDir MainWindow::findWordlistsDir() const
 {
     const QStringList candidates = {
@@ -33,6 +36,33 @@ QDir MainWindow::findWordlistsDir() const
     }
 
     return QDir(candidates.first());
+}
+
+void MainWindow::onStartScan() {
+    FFUFCommand cmdModel;
+
+    cmdModel.url = urlEdit->text().toStdString();
+    cmdModel.threads = static_cast<unsigned short>(threadsSpin->value());
+    cmdModel.wordlistPath = wordlistCombo->currentData().toString().toStdString();
+    cmdModel.redirects = followRedirectsCheck->isChecked();
+    cmdModel.autoCal = autoCalibrateCheck->isChecked();
+    cmdModel.recursion = recursionCheck->isChecked();
+    cmdModel.recursionDepth = static_cast<unsigned short>(recursionDepthSpin->value());
+    cmdModel.ignoreBody = ignoreBodyCheck->isChecked();
+    cmdModel.http2 = http2Check->isChecked();
+    cmdModel.ignoreWordlistComments = ignoreCommentsCheck->isChecked();
+    cmdModel.extensions = extensionsEdit->text().toStdString();
+    cmdModel.filterOutStatuses = filterStatusEdit->text().toStdString();
+    cmdModel.matchStatuses = matchStatusEdit->text().toStdString();
+    cmdModel.timeout = static_cast<unsigned short>(timeoutSpin->value());
+
+    std::string cmdFlags = cmdModel.buildCommandFlags();
+
+    FFUFRunner cmdRunner;
+
+    std::string ffufResponse = cmdRunner.runCommand(cmdFlags);
+
+    std::cout << ffufResponse << std::endl;
 }
 
 MainWindow::MainWindow(QWidget *parent)
@@ -147,6 +177,9 @@ MainWindow::MainWindow(QWidget *parent)
     auto* buttonLayout = new QHBoxLayout();
 
     startButton = new QPushButton(QStringLiteral("Start Scan"));
+
+    connect(startButton, &QPushButton::clicked, this, &MainWindow::onStartScan);
+
     stopButton = new QPushButton(QStringLiteral("Stop"));
 
     buttonLayout->addWidget(startButton);

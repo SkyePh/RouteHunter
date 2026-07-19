@@ -16,9 +16,7 @@ if(APPLE)
         MACOSX_PACKAGE_LOCATION "Resources")
     set(app_icon_asset ${app_icon_macos})
 elseif(WIN32)
-    set(app_icon_asset "${CMAKE_CURRENT_SOURCE_DIR}/assets/RouteHunter.rc"
-            src/FFUFCommand.h
-            src/FFUFCommand.h)
+    set(app_icon_asset "${CMAKE_CURRENT_SOURCE_DIR}/assets/RouteHunter.rc")
 endif()
 
 qt_add_executable(RouteHunter
@@ -28,8 +26,10 @@ qt_add_executable(RouteHunter
         src/MainWindow.cpp
         src/MainWindow.h
         src/FFUFRunner.cpp
-        ${app_icon_asset}
-        src/FFUFCommand.h)
+        src/FFUFRunner.h
+        src/FFUFCommand.cpp
+        src/FFUFCommand.h
+        ${app_icon_asset})
 
 if(APPLE)
     set_target_properties(RouteHunter PROPERTIES MACOSX_BUNDLE TRUE)
@@ -39,7 +39,10 @@ add_custom_command(TARGET RouteHunter POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_CURRENT_SOURCE_DIR}/wordlists"
         "$<TARGET_FILE_DIR:RouteHunter>/wordlists"
-        COMMENT "Copy wordlists next to executable")
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools"
+        "$<TARGET_FILE_DIR:RouteHunter>/tools"
+        COMMENT "Copy wordlists and tools next to executable")
 
 qt_add_resources(RouteHunter "app_icons"
         PREFIX "/"

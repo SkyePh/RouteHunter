@@ -21,6 +21,7 @@ public:
 
 private:
     QDir findWordlistsDir() const;
+    void onStartScan();
 
     QLineEdit* urlEdit;
     QComboBox* wordlistCombo;
