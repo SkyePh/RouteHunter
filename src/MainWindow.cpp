@@ -18,6 +18,8 @@
 #include <QTableWidget>
 #include <QVBoxLayout>
 #include <QWidget>
+#include <QJsonDocument>
+#include <QJsonObject>
 
 #include "FFUFCommand.h"
 #include "FFUFRunner.h"
@@ -63,6 +65,24 @@ void MainWindow::onStartScan() {
     std::string ffufResponse = cmdRunner.runCommand(cmdFlags);
 
     std::cout << ffufResponse << std::endl;
+
+    //show res in table
+    resultsTable->setRowCount(0); // clear previous scan
+    const QString output = QString::fromStdString(ffufResponse);
+    const QStringList lines = output.split('\n', Qt::SkipEmptyParts);
+    for (const QString& line : lines) {
+        const QJsonDocument doc = QJsonDocument::fromJson(line.toUtf8());
+        if (!doc.isObject())
+            continue;
+        const QJsonObject obj = doc.object();
+        const int row = resultsTable->rowCount();
+        resultsTable->insertRow(row);
+        resultsTable->setItem(row, 0, new QTableWidgetItem(obj.value("url").toString()));
+        resultsTable->setItem(row, 1, new QTableWidgetItem(QString::number(obj.value("status").toInt())));
+        resultsTable->setItem(row, 2, new QTableWidgetItem(QString::number(obj.value("length").toInt())));
+        resultsTable->setItem(row, 3, new QTableWidgetItem(QString::number(obj.value("words").toInt())));
+        resultsTable->setItem(row, 4, new QTableWidgetItem(QString::number(obj.value("lines").toInt())));
+    }
 }
 
 MainWindow::MainWindow(QWidget *parent)
