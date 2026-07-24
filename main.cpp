@@ -19,7 +19,7 @@ int main(int argc, char *argv[]) {
     string ffufPath = getFFUFPath();
 
     if (ffufPath.empty()) {
-        cerr << "System not supported.\n Supported Systems:\n Linux, Windows, MacOS both ARM64 and AMD64\n";
+        cerr << "System not supported.\n Supported Systems:\n Linux (ARM64/AMD64), Windows (ARM64/AMD64), macOS (ARM64)\n";
         return 1;
     }
 

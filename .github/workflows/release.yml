@@ -25,9 +25,6 @@ jobs:
           - os: macos-14
             artifact: macos-arm64
             archive: zip
-          - os: macos-13
-            artifact: macos-amd64
-            archive: zip
           # Qt 6.8 needs glibc >= 2.38 on arm → Ubuntu 24.04
           - os: ubuntu-24.04
             artifact: linux-amd64
