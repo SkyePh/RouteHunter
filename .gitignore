@@ -1,0 +1,9 @@
+.DS_Store
+.idea/
+cmake-build-*/
+build/
+dist/
+dist-stage/
+*.zip
+*.tar.gz
+RouteHunter.app/

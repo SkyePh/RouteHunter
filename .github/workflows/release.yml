@@ -1,0 +1,245 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version without v prefix (e.g. 1.0.0)"
+        required: true
+        default: "1.0.0"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.artifact }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            artifact: macos-arm64
+            archive: zip
+          - os: macos-13
+            artifact: macos-amd64
+            archive: zip
+          - os: ubuntu-22.04
+            artifact: linux-amd64
+            archive: tar.gz
+          - os: ubuntu-22.04-arm
+            artifact: linux-arm64
+            archive: tar.gz
+          - os: windows-latest
+            artifact: windows-amd64
+            archive: zip
+          - os: windows-11-arm
+            artifact: windows-arm64
+            archive: zip
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.2"
+          cache: true
+          setup-python: false
+
+      - name: Install build deps (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ninja
+
+      - name: Install build deps (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libgl1-mesa-dev libxkbcommon-dev libxcb-cursor0
+
+      - name: Configure & build (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build
+
+      - name: Configure & build (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --config Release
+
+      - name: Package macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.ver.outputs.version }}"
+          ARTIFACT="${{ matrix.artifact }}"
+          APP="build/RouteHunter.app"
+          MACOS="$APP/Contents/MacOS"
+
+          # Avoid codesign treating data dirs as nested code
+          mv "$MACOS/wordlists" /tmp/rh-wordlists
+          mv "$MACOS/tools" /tmp/rh-tools
+
+          macdeployqt "$APP" -no-codesign
+
+          mv /tmp/rh-wordlists "$MACOS/wordlists"
+          mv /tmp/rh-tools "$MACOS/tools"
+          find "$MACOS/tools" -type f -name ffuf -exec chmod +x {} \;
+
+          mkdir -p dist
+          ditto -c -k --sequesterRsrc --keepParent "$APP" "dist/RouteHunter-${VERSION}-${ARTIFACT}.zip"
+
+      - name: Package Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.ver.outputs.version }}"
+          ARTIFACT="${{ matrix.artifact }}"
+          NAME="RouteHunter-${VERSION}-${ARTIFACT}"
+          STAGE="dist-stage/${NAME}"
+          BIN="build/RouteHunter"
+
+          mkdir -p "$STAGE/lib" "$STAGE/plugins"
+          cp "$BIN" "$STAGE/"
+          cp -a build/wordlists "$STAGE/"
+          cp -a build/tools "$STAGE/"
+          find "$STAGE/tools" -type f -name ffuf -exec chmod +x {} \;
+
+          # Bundle non-system shared libs next to the binary
+          ldd "$BIN" | awk '/=>/ {print $3}' | while read -r lib; do
+            [ -z "$lib" ] && continue
+            [ ! -f "$lib" ] && continue
+            case "$lib" in
+              /lib/*|/usr/lib/*)
+                base="$(basename "$lib")"
+                case "$base" in
+                  libc.so*|libm.so*|libdl.so*|libpthread.so*|libresolv.so*|librt.so*|libgcc_s.so*|libstdc++.so*)
+                    continue
+                    ;;
+                esac
+                cp -L "$lib" "$STAGE/lib/" || true
+                ;;
+              *)
+                cp -L "$lib" "$STAGE/lib/" || true
+                ;;
+            esac
+          done
+
+          # Qt plugins from the installed Qt
+          QT_PLUGINS="${QT_ROOT_DIR}/plugins"
+          if [ -d "$QT_PLUGINS" ]; then
+            for extra in platforms imageformats styles iconengines; do
+              if [ -d "$QT_PLUGINS/$extra" ]; then
+                mkdir -p "$STAGE/plugins/$extra"
+                cp -a "$QT_PLUGINS/$extra/"*.so "$STAGE/plugins/$extra/" 2>/dev/null || true
+              fi
+            done
+          fi
+
+          printf '%s\n' \
+            '#!/usr/bin/env bash' \
+            'DIR="$(cd "$(dirname "$0")" && pwd)"' \
+            'export LD_LIBRARY_PATH="$DIR/lib:${LD_LIBRARY_PATH:-}"' \
+            'export QT_PLUGIN_PATH="$DIR/plugins"' \
+            'exec "$DIR/RouteHunter" "$@"' \
+            > "$STAGE/RouteHunter.sh"
+          chmod +x "$STAGE/RouteHunter.sh" "$STAGE/RouteHunter"
+
+          mkdir -p dist
+          tar -C dist-stage -czf "dist/${NAME}.tar.gz" "$NAME"
+
+      - name: Package Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $Version = "${{ steps.ver.outputs.version }}"
+          $Artifact = "${{ matrix.artifact }}"
+          $Name = "RouteHunter-$Version-$Artifact"
+          $Stage = "dist-stage/$Name"
+
+          New-Item -ItemType Directory -Force -Path $Stage | Out-Null
+
+          $exe = "build/Release/RouteHunter.exe"
+          if (-not (Test-Path $exe)) {
+            $exe = "build/RouteHunter.exe"
+          }
+          Copy-Item $exe $Stage
+
+          $wl = "build/Release/wordlists"
+          if (-not (Test-Path $wl)) { $wl = "build/wordlists" }
+          $tools = "build/Release/tools"
+          if (-not (Test-Path $tools)) { $tools = "build/tools" }
+          Copy-Item -Recurse $wl "$Stage/wordlists"
+          Copy-Item -Recurse $tools "$Stage/tools"
+
+          windeployqt --release "$Stage/RouteHunter.exe"
+
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Compress-Archive -Path "$Stage/*" -DestinationPath "dist/$Name.zip" -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RouteHunter-${{ steps.ver.outputs.version }}-${{ matrix.artifact }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+            echo "tag=v${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download all packages
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: List packages
+        run: ls -lah release-assets
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: RouteHunter ${{ steps.ver.outputs.version }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
