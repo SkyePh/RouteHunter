@@ -106,7 +106,9 @@ jobs:
           mv "$MACOS/wordlists" /tmp/rh-wordlists
           mv "$MACOS/tools" /tmp/rh-tools
 
-          macdeployqt "$APP" -no-codesign
+          # Data dirs are moved out so macdeployqt/codesign won't treat them as nested code.
+          # Qt 6.8's macdeployqt does not accept -no-codesign.
+          macdeployqt "$APP"
 
           mv /tmp/rh-wordlists "$MACOS/wordlists"
           mv /tmp/rh-tools "$MACOS/tools"
