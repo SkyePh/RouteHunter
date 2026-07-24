@@ -28,10 +28,11 @@ jobs:
           - os: macos-13
             artifact: macos-amd64
             archive: zip
-          - os: ubuntu-22.04
+          # Qt 6.8 needs glibc >= 2.38 on arm → Ubuntu 24.04
+          - os: ubuntu-24.04
             artifact: linux-amd64
             archive: tar.gz
-          - os: ubuntu-22.04-arm
+          - os: ubuntu-24.04-arm
             artifact: linux-arm64
             archive: tar.gz
           - os: windows-latest
@@ -55,12 +56,17 @@ jobs:
             echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
           fi
 
+      # Needed so install-qt-action does not use Homebrew's PEP 668 Python on macOS
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
           version: "6.8.2"
           cache: true
-          setup-python: false
 
       - name: Install build deps (macOS)
         if: runner.os == 'macOS'
@@ -83,7 +89,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake -S . -B build
           cmake --build build --config Release
 
       - name: Package macOS
